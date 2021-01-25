@@ -45,23 +45,41 @@ public class MsgDecoder extends ByteToMessageDecoder {
      */
     @Override
     protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
+
+        // 字节流不满足完整一帧的长度时，直接返回，等待完整的一帧
         if (Const.FRAME_LEN != in.readableBytes()) {
             System.out.println("Msg frame length error.");
             return;
         }
 
-        // 1. 获取消息头切片，并解析
-        ByteBuf headerByteBuf = getHeader(in);
-        MsgHeader msgHeader = parseHeaderInfo(headerByteBuf);
-        System.out.println("MsgHeader ===> " + msgHeader.toString());
+        // 标记完整一帧开始位置
+        in.markReaderIndex();
 
-        // 2. 获取消息体切片，并解析
-        ByteBuf bodyByteBuf = getBody(in, msgHeader.getBodyLen());
-        MsgBody msgBody = parseBodyInfo(bodyByteBuf);
-        System.out.println("MsgBody   ===> " + msgBody.toString());
+        // 开始解析字节流
+        try {
 
-        // 3. 构建模型对象，传递给后续 pipeline 处理
-        out.add(new PersonMsg(msgHeader, msgBody));
+            // 1. 获取消息头切片，并解析
+            ByteBuf headerByteBuf = getHeader(in);
+            MsgHeader msgHeader = parseHeaderInfo(headerByteBuf);
+            System.out.println("MsgDecoder MsgHeader ===> " + msgHeader.toString());
+
+            // 2. 获取消息体切片，并解析
+            ByteBuf bodyByteBuf = getBody(in, msgHeader.getBodyLen());
+            MsgBody msgBody = parseBodyInfo(bodyByteBuf);
+            System.out.println("MsgDecoder MsgBody ===> " + msgBody.toString());
+
+            // 3. 构建模型对象，传递给后续 pipeline 处理
+            out.add(new PersonMsg(msgHeader, msgBody));
+
+        } catch (Exception e) {
+            // 打印异常
+            System.out.println("MsgDecoder exception : " + e);
+
+        } finally {
+            // 无论解析完整一帧报文时是否出现异常，最终都需跳过完整一帧的长度，否则会影响后续的解析
+            in.resetReaderIndex();
+            in.skipBytes(Const.FRAME_LEN);
+        }
     }
 
     /**
